@@ -1,0 +1,56 @@
+name: CI/CD
+on:
+  pull_request:
+  push:
+  schedule:
+    - cron: 0 0 * * 1
+  workflow_dispatch:
+
+jobs:
+  app:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        shell: nix develop --command bash -eo pipefail {0}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install nix
+        uses: DeterminateSystems/nix-installer-action@v22
+
+      - name: Build dev shell
+        shell: bash
+        run: nix develop --profile profile && rm profile
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - run: pnpm install
+
+      - run: pnpm run lint
+
+      - run: pnpm run check
+
+  nix:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Install nix
+        uses: DeterminateSystems/nix-installer-action@v22
+
+      - run: nix flake check --print-build-logs
